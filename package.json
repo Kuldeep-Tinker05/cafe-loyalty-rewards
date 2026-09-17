@@ -1,0 +1,19 @@
+{
+  "name": "cafe-loyalty-rewards",
+  "version": "1.0.0",
+  "description": "Cafe Loyalty Rewards System - counter-staff app for member lookup, purchases, tiers and redemptions",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

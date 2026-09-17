@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BrewPoints — Staff App</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="app-body">
+  <header class="nav">
+    <a class="brand" href="/">☕ BrewPoints</a>
+    <div id="whoami" class="whoami"></div>
+  </header>
+
+  <!-- AUTH -->
+  <section id="authView" class="auth-view">
+    <div class="auth-card">
+      <div class="tabs">
+        <button id="tabLogin" class="tab active">Login</button>
+        <button id="tabRegister" class="tab">Register</button>
+      </div>
+      <div id="regName" class="field hidden">
+        <label>Name</label><input id="fName" placeholder="Your name" />
+      </div>
+      <div class="field"><label>Email</label><input id="fEmail" placeholder="staff@cafe.com" /></div>
+      <div class="field"><label>Password</label><input id="fPass" type="password" placeholder="••••••••" /></div>
+      <button id="authSubmit" class="btn btn-primary full">Login</button>
+      <p class="hint">Demo: <b>staff@cafe.com</b> / <b>password123</b> (run <code>npm run seed</code>)</p>
+      <p id="authErr" class="err"></p>
+    </div>
+  </section>
+
+  <!-- MAIN APP -->
+  <main id="appView" class="app-view hidden">
+    <div class="lookup">
+      <input id="phoneInput" placeholder="Search phone / name..." />
+      <button id="searchBtn" class="btn btn-primary">Search</button>
+      <button id="newBtn" class="btn btn-ghost">+ New Member</button>
+    </div>
+
+    <!-- list controls -->
+    <div class="controls">
+      <label>Sort
+        <select id="sortSel">
+          <option value="created_at">Newest</option>
+          <option value="name">Name</option>
+          <option value="lifetime_points">Lifetime points</option>
+          <option value="balance_points">Balance</option>
+          <option value="tier">Tier</option>
+        </select>
+      </label>
+      <label>Order
+        <select id="orderSel"><option value="desc">Desc</option><option value="asc">Asc</option></select>
+      </label>
+    </div>
+
+    <table class="table">
+      <thead><tr><th>Name</th><th>Phone</th><th>Tier</th><th>Lifetime</th><th>Balance</th><th></th></tr></thead>
+      <tbody id="memberRows"></tbody>
+    </table>
+    <div class="pager">
+      <button id="prevBtn" class="btn btn-ghost">← Prev</button>
+      <span id="pageInfo"></span>
+      <button id="nextBtn" class="btn btn-ghost">Next →</button>
+    </div>
+  </main>
+
+  <!-- MEMBER DETAIL MODAL -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
