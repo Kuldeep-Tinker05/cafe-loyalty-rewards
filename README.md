@@ -1,7 +1,7 @@
 # ☕ BrewPoints — Cafe Loyalty Rewards System
 
 A full-stack loyalty tool for cafe counter staff. Staff log in, look up members by phone,
-record purchases (points are awarded automatically), watch Bronze/Silver/Gold tiers upgrade,
+record purchases (points are awarded automatically), watch Bronze/Silver/Gold/Platinum tiers upgrade,
 and let members redeem points for discounts.
 
 Built for the **AurigaIT Round 2 "Builder" Challenge**.
@@ -25,19 +25,31 @@ npm start         # http://localhost:4000
 ## Loyalty Rules (single source of truth: `src/loyalty.js`)
 | Rule | Value |
 |------|-------|
-| Earning | 1 point per ₹10 spent (rounded down) |
+| Bronze earning | 1 point per ₹10 spent (rounded down) |
+| Silver earning | 1.5 points per ₹10 spent (rounded down) |
+| Gold earning | 2 points per ₹10 spent (rounded down) |
+| Platinum earning | 0.3 points per ₹1 spent (rounded down) |
 | Redemption | 100 points = ₹10 discount |
 | Bronze | lifetime points < 500 |
 | Silver | 500 – 1999 |
-| Gold | ≥ 2000 |
+| Gold | 2000 – 4999 |
+| Platinum | ≥ 5000 |
 
 `lifetime_points` drives the tier and never decreases. `balance_points` is spendable and
-decreases on redemption. Tiers auto-upgrade after each purchase.
+decreases on redemption. A purchase uses the member's tier before that purchase is applied,
+so a purchase that crosses a tier threshold still uses the previous tier's earning rate.
+Tiers auto-upgrade after each purchase.
+
+Points expire after 90 days if unused. `point_lots` track remaining spendable points
+and their expiration timestamps; redemptions consume lots FIFO. `lifetime_points` does not
+decrease on redemption or expiry.
 
 ## Database Schema
 - **staff** — `id, name, email (unique), password_hash, created_at`
 - **members** — `id, name, phone (unique), email, tier, lifetime_points, balance_points, created_at`
-- **transactions** — `id, member_id (FK), type ('purchase'|'redeem'), amount, points_delta, note, created_at`
+- **transactions** — `id, member_id (FK), type ('purchase'|'redeem'|'expire'), amount, points_delta, note, created_at`
+- **point_lots** — `id, member_id (FK), source_transaction_id, points_earned, points_remaining, earned_at, expires_at`
+- **outbox** — `id, event_type, member_id, payload, created_at, delivered_at`
 
 ## REST API
 
@@ -62,6 +74,11 @@ decreases on redemption. Tiers auto-upgrade after each purchase.
 |--------|----------|------|-------------|
 | POST | `/api/members/:id/purchase` | `{amount, note?}` | Records purchase, auto-awards points, auto-upgrades tier |
 | POST | `/api/members/:id/redeem` | `{points, note?}` | Redeems points for discount, decrements balance |
+| POST | `/clock` | `{now: "<ISO timestamp>"}` | Expires stale point lots; returns `expiredPoints` and `membersAffected` |
+| GET | `/outbox` | — | Returns pending tier-change notification events in creation order |
+
+`/outbox` events use `event_type: "member.tier_changed"` and remain pending until a
+future delivery integration marks them delivered.
 
 ### Query parameters for `GET /api/members`
 - `search` — matches name, phone, or email

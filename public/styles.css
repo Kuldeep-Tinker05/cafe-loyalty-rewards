@@ -95,6 +95,7 @@ input, select { width: 100%; padding: 11px 13px; border-radius: 10px; border: 1p
 .tier-badge.bronze { background: #c0824a30; color: var(--bronze); }
 .tier-badge.silver { background: #b9c2cc30; color: var(--silver); }
 .tier-badge.gold { background: #e5b23c30; color: var(--gold); }
+.tier-badge.platinum { background: #d9e4ef30; color: #d9e4ef; }
 .tier-badge.big { font-size: 14px; padding: 6px 14px; }
 
 /* modal */
@@ -117,7 +118,7 @@ input, select { width: 100%; padding: 11px 13px; border-radius: 10px; border: 1p
 .hrow { display: grid; grid-template-columns: 90px 1fr 90px 1fr; gap: 8px; align-items: center;
   background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 .tag { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; text-align: center; }
-.tag.purchase { background: #4caf5030; color: #7ddc8a; } .tag.redeem { background: #d98a3d30; color: var(--accent); }
+.tag.purchase { background: #4caf5030; color: #7ddc8a; } .tag.redeem { background: #d98a3d30; color: var(--accent); } .tag.expire { background: #9b7acb30; color: #c6a9f2; }
 .pos { color: #7ddc8a; } .neg { color: var(--accent); }
 
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);

@@ -44,8 +44,70 @@ function refreshTier(member) {
   return member;
 }
 
+const POINT_LOT_EXPIRY_MS = 90 * 24 * 60 * 60 * 1000;
+
+function expirationTimestamp(value) {
+  if (value === undefined) return new Date();
+  if (typeof value !== "string" || !value.trim()) return null;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+}
+
+function expirePointsAt(currentTimestamp) {
+  const now = currentTimestamp.toISOString();
+  const tx = db.transaction(() => {
+    const lots = db
+      .prepare(
+        "SELECT id, member_id, points_remaining FROM point_lots WHERE points_remaining > 0 AND expires_at <= ? ORDER BY member_id, id"
+      )
+      .all(now);
+    const expiredByMember = new Map();
+
+    for (const lot of lots) {
+      const current = expiredByMember.get(lot.member_id) || 0;
+      expiredByMember.set(lot.member_id, current + lot.points_remaining);
+      db.prepare("UPDATE point_lots SET points_remaining = 0 WHERE id = ?").run(lot.id);
+    }
+
+    const updateMember = db.prepare(
+      "UPDATE members SET balance_points = balance_points - ? WHERE id = ? AND balance_points >= ?"
+    );
+    const insertExpiration = db.prepare(
+      "INSERT INTO transactions (member_id, type, amount, points_delta, created_at, note) VALUES (?, 'expire', 0, ?, ?, ?)"
+    );
+    let expiredPoints = 0;
+
+    for (const [memberId, points] of expiredByMember) {
+      const result = updateMember.run(points, memberId, points);
+      if (!result.changes) throw new Error("Point balance is inconsistent with point lots");
+      insertExpiration.run(memberId, -points, now, "Points expired after 90 days");
+      expiredPoints += points;
+    }
+
+    return { expiredPoints, membersAffected: expiredByMember.size };
+  });
+
+  return tx();
+}
+
 // ---- health ----------------------------------------------------------------
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+app.get("/outbox", auth, (req, res) => {
+  const rows = db
+    .prepare(
+      "SELECT id, event_type, member_id, payload, created_at, delivered_at FROM outbox WHERE delivered_at IS NULL ORDER BY created_at ASC, id ASC"
+    )
+    .all()
+    .map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
+  res.json({ data: rows });
+});
+
+app.post("/clock", auth, (req, res) => {
+  const now = expirationTimestamp(req.body?.now);
+  if (!now) return res.status(400).json({ error: "now must be a valid timestamp" });
+  res.json(expirePointsAt(now));
+});
 
 // ---- auth ------------------------------------------------------------------
 // Register staff
@@ -89,6 +151,10 @@ app.get("/api/members", auth, (req, res) => {
   const sortable = ["name", "phone", "tier", "lifetime_points", "balance_points", "created_at"];
   const sort = sortable.includes(req.query.sort) ? req.query.sort : "created_at";
   const order = (req.query.order || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+  const orderBy =
+    sort === "tier"
+      ? `CASE tier WHEN 'Bronze' THEN 1 WHEN 'Silver' THEN 2 WHEN 'Gold' THEN 3 WHEN 'Platinum' THEN 4 END ${order}`
+      : `${sort} ${order}`;
 
   const where = search ? "WHERE name LIKE @q OR phone LIKE @q OR email LIKE @q" : "";
   const q = `%${search}%`;
@@ -98,7 +164,7 @@ app.get("/api/members", auth, (req, res) => {
     .get({ q }).n;
   const rows = db
     .prepare(
-      `SELECT * FROM members ${where} ORDER BY ${sort} ${order} LIMIT @limit OFFSET @offset`
+      `SELECT * FROM members ${where} ORDER BY ${orderBy} LIMIT @limit OFFSET @offset`
     )
     .all({ q, limit, offset });
 
@@ -161,20 +227,51 @@ app.post("/api/members/:id/purchase", auth, (req, res) => {
   const member = db.prepare("SELECT * FROM members WHERE id = ?").get(req.params.id);
   if (!member) return res.status(404).json({ error: "Member not found" });
   const amount = Number(req.body?.amount);
-  if (!(amount > 0)) return res.status(400).json({ error: "amount must be a positive number" });
+  if (!Number.isFinite(amount) || !(amount > 0))
+    return res.status(400).json({ error: "amount must be a positive number" });
 
-  const earned = loyalty.pointsForPurchase(amount);
+  const previousTier = member.tier;
+  const earned = loyalty.pointsForPurchase(amount, member.tier);
   const tx = db.transaction(() => {
+    const purchase = db
+      .prepare(
+        "INSERT INTO transactions (member_id, type, amount, points_delta, note) VALUES (?, 'purchase', ?, ?, ?)"
+      )
+      .run(member.id, amount, earned, req.body?.note || null);
+    const earnedAt = new Date().toISOString();
+    if (earned > 0) {
+      db.prepare(
+        "INSERT INTO point_lots (member_id, source_transaction_id, points_earned, points_remaining, earned_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(
+        member.id,
+        purchase.lastInsertRowid,
+        earned,
+        earned,
+        earnedAt,
+        new Date(new Date(earnedAt).getTime() + POINT_LOT_EXPIRY_MS).toISOString()
+      );
+    }
+    const tier = loyalty.tierForPoints(member.lifetime_points + earned);
     db.prepare(
-      "UPDATE members SET lifetime_points = lifetime_points + ?, balance_points = balance_points + ? WHERE id = ?"
-    ).run(earned, earned, member.id);
-    db.prepare(
-      "INSERT INTO transactions (member_id, type, amount, points_delta, note) VALUES (?, 'purchase', ?, ?, ?)"
-    ).run(member.id, amount, earned, req.body?.note || null);
+      "UPDATE members SET lifetime_points = lifetime_points + ?, balance_points = balance_points + ?, tier = ? WHERE id = ?"
+    ).run(earned, earned, tier, member.id);
+    if (tier !== previousTier) {
+      db.prepare(
+        "INSERT INTO outbox (event_type, member_id, payload) VALUES (?, ?, ?)"
+      ).run(
+        "member.tier_changed",
+        member.id,
+        JSON.stringify({
+          from: previousTier,
+          to: tier,
+          lifetime_points: member.lifetime_points + earned,
+        })
+      );
+    }
   });
   tx();
 
-  const updated = refreshTier(db.prepare("SELECT * FROM members WHERE id = ?").get(member.id));
+  const updated = db.prepare("SELECT * FROM members WHERE id = ?").get(member.id);
   res.status(201).json({ pointsEarned: earned, member: updated });
 });
 
@@ -182,16 +279,47 @@ app.post("/api/members/:id/purchase", auth, (req, res) => {
 app.post("/api/members/:id/redeem", auth, (req, res) => {
   const member = db.prepare("SELECT * FROM members WHERE id = ?").get(req.params.id);
   if (!member) return res.status(404).json({ error: "Member not found" });
-  const points = parseInt(req.body?.points);
+  const points = Number(req.body?.points);
+  if (!Number.isInteger(points) || !(points > 0))
+    return res
+      .status(400)
+      .json({ error: `points must be a positive multiple of ${loyalty.POINTS_PER_REDEEM_UNIT}` });
   const value = loyalty.redeemValue(points);
   if (value === null)
     return res
       .status(400)
       .json({ error: `points must be a positive multiple of ${loyalty.POINTS_PER_REDEEM_UNIT}` });
-  if (points > member.balance_points)
-    return res.status(400).json({ error: "Insufficient point balance" });
-
   const tx = db.transaction(() => {
+    const current = db
+      .prepare("SELECT balance_points FROM members WHERE id = ?")
+      .get(member.id);
+    if (points > current.balance_points) {
+      const error = new Error("Insufficient point balance");
+      error.code = "INSUFFICIENT_BALANCE";
+      throw error;
+    }
+
+    const lots = db
+      .prepare(
+        "SELECT id, points_remaining FROM point_lots WHERE member_id = ? AND points_remaining > 0 ORDER BY expires_at ASC, id ASC"
+      )
+      .all(member.id);
+    let remaining = points;
+    for (const lot of lots) {
+      if (remaining === 0) break;
+      const consumed = Math.min(remaining, lot.points_remaining);
+      db.prepare("UPDATE point_lots SET points_remaining = points_remaining - ? WHERE id = ?").run(
+        consumed,
+        lot.id
+      );
+      remaining -= consumed;
+    }
+    if (remaining > 0) {
+      const error = new Error("Insufficient point balance");
+      error.code = "INSUFFICIENT_BALANCE";
+      throw error;
+    }
+
     db.prepare("UPDATE members SET balance_points = balance_points - ? WHERE id = ?").run(
       points,
       member.id
@@ -200,7 +328,13 @@ app.post("/api/members/:id/redeem", auth, (req, res) => {
       "INSERT INTO transactions (member_id, type, amount, points_delta, note) VALUES (?, 'redeem', ?, ?, ?)"
     ).run(member.id, value, -points, req.body?.note || null);
   });
-  tx();
+  try {
+    tx();
+  } catch (error) {
+    if (error.code === "INSUFFICIENT_BALANCE")
+      return res.status(400).json({ error: error.message });
+    throw error;
+  }
 
   const updated = db.prepare("SELECT * FROM members WHERE id = ?").get(member.id);
   res.status(201).json({ pointsRedeemed: points, discountValue: value, member: updated });

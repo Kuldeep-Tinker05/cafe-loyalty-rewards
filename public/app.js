@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem("bp_token") || null;
 let staff = JSON.parse(localStorage.getItem("bp_staff") || "null");
 let mode = "login";
-let state = { page: 1, limit: 8, search: "", sort: "created_at", order: "desc" };
+let state = { page: 1, limit: 8, totalPages: 1, search: "", sort: "created_at", order: "desc" };
 
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
@@ -69,6 +69,9 @@ async function loadMembers() {
   const qs = new URLSearchParams({ search, sort, order, page, limit }).toString();
   try {
     const { data, total, pages } = await api(`/members?${qs}`);
+    state.totalPages = pages || 1;
+    $("prevBtn").disabled = state.page <= 1;
+    $("nextBtn").disabled = state.page >= state.totalPages;
     $("memberRows").innerHTML = data.length
       ? data
           .map(
@@ -80,7 +83,7 @@ async function loadMembers() {
           )
           .join("")
       : `<tr><td colspan="6" class="empty">No members found</td></tr>`;
-    $("pageInfo").textContent = `Page ${page} of ${pages || 1} · ${total} members`;
+    $("pageInfo").textContent = `Page ${page} of ${state.totalPages} · ${total} members`;
     document.querySelectorAll(".openBtn").forEach((b) => {
       b.onclick = () => openMember(b.closest("tr").dataset.id);
     });
@@ -94,7 +97,7 @@ $("phoneInput").addEventListener("keydown", (e) => e.key === "Enter" && $("searc
 $("sortSel").onchange = () => ((state.sort = $("sortSel").value), loadMembers());
 $("orderSel").onchange = () => ((state.order = $("orderSel").value), loadMembers());
 $("prevBtn").onclick = () => state.page > 1 && ((state.page--), loadMembers());
-$("nextBtn").onclick = () => ((state.page++), loadMembers());
+$("nextBtn").onclick = () => state.page < state.totalPages && ((state.page++), loadMembers());
 
 // ---- create member ---------------------------------------------------------
 $("newBtn").onclick = () => {
@@ -128,7 +131,14 @@ $("newBtn").onclick = () => {
 // ---- member detail ---------------------------------------------------------
 async function openMember(id) {
   const m = await api(`/members/${id}`);
-  const nextTier = m.tier === "Bronze" ? "Silver (500)" : m.tier === "Silver" ? "Gold (2000)" : "Max tier";
+  const nextTier =
+    m.tier === "Bronze"
+      ? "Silver (500)"
+      : m.tier === "Silver"
+        ? "Gold (2000)"
+        : m.tier === "Gold"
+          ? "Platinum (5000)"
+          : "Max tier";
   $("modalCard").innerHTML = `
     <button class="close" onclick="closeModal()">✕</button>
     <div class="detail-head">
@@ -160,7 +170,7 @@ async function openMember(id) {
             .map(
               (t) => `<div class="hrow">
         <span class="tag ${t.type}">${t.type}</span>
-        <span>${t.type === "purchase" ? "₹" + t.amount : "₹" + t.amount + " off"}</span>
+        <span>${t.type === "purchase" ? "₹" + t.amount : t.type === "redeem" ? "₹" + t.amount + " off" : "Points expired"}</span>
         <span class="${t.points_delta >= 0 ? "pos" : "neg"}">${t.points_delta >= 0 ? "+" : ""}${t.points_delta} pts</span>
         <span class="muted">${t.created_at}</span></div>`
             )

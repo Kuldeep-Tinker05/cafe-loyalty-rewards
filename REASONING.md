@@ -17,22 +17,44 @@ plus auth, search, pagination, sorting, and a landing page.
   because the requirement is just "registration/login that works."
 
 ## Key design decisions
-1. **All loyalty rules live in `src/loyalty.js`.** Points earning, redemption conversion, and
-   tier thresholds are pure functions in one file — easy to audit, test, and change. Nothing
-   about "how many points" is scattered across routes.
-2. **`lifetime_points` vs `balance_points`.** Lifetime drives the tier and never decreases, so a
-   member who redeems doesn't get demoted. Balance is the spendable wallet. This mirrors how real
-   loyalty programs work and prevents a common bug (redeeming dropping someone's tier).
-3. **Tier auto-upgrades after every purchase** via `refreshTier()` — the client never sets tiers
-   manually, keeping data consistent.
-4. **One list endpoint does search + sort + pagination.** `GET /api/members` covers all three
+1. **All loyalty rules live in `src/loyalty.js`.** Platinum is a fourth tier for members with
+  lifetime points of 5000 or more. Tier-specific earning rates are Bronze: 1 point per ₹10,
+  Silver: 1.5 points per ₹10, Gold: 2 points per ₹10, and Platinum: 0.3 points per ₹1, with
+  final points rounded down. Redemption conversion and tier thresholds are also pure functions in one file —
+  easy to audit, test, and change. Nothing about "how many points" is scattered across routes.
+2. **Purchases use the pre-purchase tier.** The route reads the member's current tier before
+  updating lifetime points, so a purchase that crosses a threshold uses the old tier's rate.
+  The tier refresh happens only after the purchase is recorded, making the next purchase use
+  the upgraded rate.
+3. **`lifetime_points` vs `balance_points`.** Lifetime points drive the tier and never decrease.
+  Balance points are the spendable wallet and decrease on redemption. This means redeeming
+  points does not demote a member.
+4. **Point lots support expiration.** Aggregate balances cannot identify which points are still
+  unused or when they expire, so each purchase creates a `point_lots` row with remaining points
+  and a 90-day expiration. Redemption consumes lots FIFO, making partial consumption deterministic.
+  Expiration reduces only `balance_points`; lifetime points represent earned history and never decrease.
+5. **The explicit `/clock` timestamp keeps expiration deterministic.** `POST /clock` accepts an ISO
+  timestamp instead of changing the process or system clock, which makes grading and focused tests repeatable.
+6. **Tier notifications use an outbox.** A tier-change event is inserted into the outbox in the
+  same purchase transaction, so the purchase and notification cannot diverge. `GET /outbox` exposes
+  pending events in creation order without marking them delivered.
+7. **Tier auto-upgrades after every purchase** in the purchase transaction — the client never sets
+  tiers manually, keeping data consistent.
+8. **One list endpoint does search + sort + pagination.** `GET /api/members` covers all three
    graded requirements. Sort columns are whitelisted to prevent SQL injection via `sort`/`order`.
-5. **Atomic writes.** Purchases and redemptions run inside `db.transaction()` so the member update
-   and the transaction-log insert can't drift apart.
-6. **Parameterised queries everywhere** — no string-concatenated SQL, so user input is safe.
+9. **Atomic writes and redemption protection.** Purchases and redemptions run inside
+  `db.transaction()` so the member update and transaction-log insert cannot drift apart.
+  Redemption re-reads the current balance inside the transaction and throws on insufficient
+  balance, so no partial redemption can commit.
+10. **Parameterised queries everywhere** — no string-concatenated SQL, so user input is safe.
 
 ## Trade-offs / what I skipped (and would add with more time)
-- No automated tests — verified endpoints manually with curl. Would add Jest + supertest.
+- No full automated test suite — validation used JavaScript syntax checks, focused assertions for
+  tier rates, strict purchase/redemption inputs, pagination guards, tier sorting, redemption
+  rollback, lifetime-point preservation, landing-page content, and a safe seed run in a temporary
+  project copy. Additional focused temporary-server checks covered point-lot creation, FIFO and
+  partial redemption, exact 90-day expiry, `/clock` idempotence, Platinum crossings, outbox event
+  ordering, repeatable reads, and transaction rollback. A full Jest + supertest suite would still be useful.
 - No role separation (all staff equal). Fine for a counter tool.
 - Frontend is vanilla JS, not React — chosen deliberately for speed and zero build risk.
   With more time I'd port the staff app to React for cleaner state management.
@@ -49,7 +71,9 @@ plus auth, search, pagination, sorting, and a landing page.
 | Pagination | `?page=&limit=` |
 | Sorting | `?sort=&order=` (whitelisted) |
 | Points auto-award | `POST /:id/purchase` → `loyalty.pointsForPurchase` |
-| Tier upgrades | `refreshTier()` after purchase |
+| Tier upgrades | Purchase transaction recalculates the tier |
 | Redemption | `POST /:id/redeem` → `loyalty.redeemValue` |
+| Point expiration | `point_lots` + `POST /clock` |
+| Tier notifications | `outbox` + `GET /outbox` |
 | Landing page | `public/index.html` |
 | Usable UI | `public/app.html` + `app.js` |
