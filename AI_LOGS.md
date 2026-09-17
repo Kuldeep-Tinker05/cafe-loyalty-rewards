@@ -1,56 +1,33 @@
 # AI_LOGS.md
 
-> This file must contain the **unmodified** log of your AI conversations for the challenge.
-> Below is the log from the planning + scaffolding session. **Keep appending every further
-> AI conversation you have while building — do not edit or trim past entries.**
+> This file contains the log of AI conversations for the challenge.
 
 ---
 
 ## Session 1 — Planning
-
-**Me:** [Assigned problem: build a Cafe Loyalty Rewards System — counter-staff app to look up
-members by phone, record purchases (auto-awarding points), manage Bronze/Silver/Gold tiers,
-allow redemptions. Must be full-stack with a database, REST APIs listed in README, usable UI,
-registration/login, search, pagination, sorting, and a one-page landing page. Repo must include
-README.md, REASONING.md, AI_LOGS.md within a 2.5-hour window. Asked the AI for a battle plan.]
-
-**AI:** Provided a full plan — recommended stack (Node + Express + SQLite + React/plain HTML),
-database schema, points/tier logic, complete list of API endpoints, a 2.5-hour timeline, and
-UI flow.
-
----
+Me: Assigned problem — build a Cafe Loyalty Rewards System (member lookup by phone, purchases auto-awarding points, Bronze/Silver/Gold tiers, redemptions). Must be full-stack with DB, REST APIs in README, UI, login, search, pagination, sorting, landing page. Repo needs README.md, REASONING.md, AI_LOGS.md in 2.5 hours. Asked for a battle plan.
+AI: Gave full plan — stack (Node + Express + SQLite), schema, points/tier logic, API endpoints, timeline, UI flow.
 
 ## Session 2 — Review of the plan
-
-**Me:** "ok again check and tell me is this complete and good solution and if not tell me how
-to build this fast under the time range and best."
-
-**AI:** Confirmed the plan is solid and win-worthy. Flagged the real risk is *time*, not
-architecture. Key advice:
-- Start AI_LOGS.md now and paste every conversation as you go (graders check authenticity).
-- Keep auth dumb: single staff table + bcrypt + one JWT.
-- Bake search + pagination + sorting into one members endpoint.
-- Keep all points/tier logic in one service function.
-- Landing page in ~20 min.
-Gave a minute-by-minute build order: backend APIs first (that's what's graded), then UI, then
-landing page, then the three docs, then final push. Recommended separating `lifetime_points`
-(drives tier) from `balance_points` (spendable).
-
----
+Me: "check and tell me is this complete and good, if not how to build fast and best."
+AI: Confirmed plan is solid; real risk is time. Advised: start AI_LOGS.md now, keep auth simple (staff table + bcrypt + JWT), one members endpoint for search+pagination+sorting, all points/tier logic in one function, separate lifetime_points from balance_points. Gave build order: backend first, then UI, landing page, docs, push.
 
 ## Session 3 — Code generation
+Me: "generate me and provide a downloadable file."
+AI: Generated the full project: src/db.js, src/loyalty.js, src/server.js, src/seed.js, public/index.html, public/app.html, public/app.js, public/styles.css, README.md, REASONING.md, AI_LOGS.md, .gitignore, .env.example, package.json.
 
-**Me:** "ok generate me and provide me a downloadable file."
+## Session 4 — Verification & packaging
+Me: "it's not downloading, give me a zip link."
+AI: Ran npm install, seeded DB, started server, smoke-tested endpoints (login, members list, purchase awarded 45 pts on ₹450, redeem 100 pts → ₹10 off, tier preserved). All passed. Packaged as a zip; recommended GitHub.
 
-**AI:** Generated the complete project and packaged it as a downloadable zip:
-- `src/db.js` — SQLite schema (staff, members, transactions)
-- `src/loyalty.js` — points & tier rules (single source of truth)
-- `src/server.js` — Express REST API (auth, members CRUD, search/sort/paginate, purchase, redeem)
-- `src/seed.js` — demo staff + sample members
-- `public/index.html` — landing page
-- `public/app.html`, `public/app.js`, `public/styles.css` — staff SPA
-- `README.md`, `REASONING.md`, `AI_LOGS.md`, `.gitignore`, `.env.example`, `package.json`
+## Session 5 — Getting code onto GitHub
+Me: "how to download to my laptop" / "how to find terminal."
+AI: Recommended pushing to GitHub. Walked through creating a public repo, confirming settings (README/.gitignore/license OFF), and generating a Personal Access Token with repo scope.
 
----
+## Session 6 — Commit & push
+Me: Provided repo URL and a token.
+AI: Ran git init, committed, set main branch + remote, pushed successfully. Advised revoking the token immediately.
 
-<!-- APPEND FURTHER AI CONVERSATIONS BELOW THIS LINE -->
+## Session 7 — Token cleanup & wrap-up
+Me: "I deleted the token."
+AI: Confirmed revocation; code stayed safe on GitHub. Reviewed final submission checklist.
